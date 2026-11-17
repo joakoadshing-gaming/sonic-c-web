@@ -8,6 +8,8 @@
         body {
             margin: 0;
             background-color: #111;
+            color: #fff;
+            font-family: system-ui, -apple-system, sans-serif;
             display: flex;
             justify-content: center;
             align-items: center;
@@ -19,27 +21,108 @@
             height: 600px;
             max-width: 100vw;
             max-height: 100vh;
+            display: none;
+        }
+        #pantalla-carga {
+            text-align: center;
+            padding: 20px;
+            max-width: 400px;
+            width: 90%;
+        }
+        .barra-fondo {
+            width: 100%;
+            height: 20px;
+            background-color: #333;
+            border-radius: 10px;
+            overflow: hidden;
+            margin-top: 15px;
+        }
+        .barra-progreso {
+            width: 0%;
+            height: 100%;
+            background-color: #0066ff;
+            transition: width 0.2s ease;
         }
     </style>
 </head>
 <body>
+
+    <div id="pantalla-carga">
+        <h2 id="texto-estado">Preparando Sonic CD...</h2>
+        <p id="detalle-carga">Descargando parte 0 de 17</p>
+        <div class="barra-fondo">
+            <div class="barra-progreso" id="barra"></div>
+        </div>
+    </div>
 
     <div id="contenedor-juego">
         <div id="game"></div>
     </div>
 
     <script>
-        EJS_player = "#game";
-        EJS_core = "segaCD";
-        EJS_defaultCore = "picodrive";
-        EJS_gameName = "Sonic CD (USA)";
-        EJS_gameUrl = "https://f005.backblazeb2.com/file/CD-rom/Sonic+CD+(USA).chd";
-        EJS_biosUrl = "bios/bios_CD_U.bin";
-        EJS_pathtodata = "https://cdn.emulatorjs.org/stable/data/";
-        EJS_language = "es-ES";
-        EJS_startOnLoaded = true;
+        async function cargarYUnirRom() {
+            const totalPartes = 17;
+            const fragmentos = [];
+            const barra = document.getElementById("barra");
+            const detalle = document.getElementById("detalle-carga");
+            const estado = document.getElementById("texto-estado");
+
+            try {
+                for (let i = 1; i <= totalPartes; i++) {
+                    const numero = String(i).padStart(3, "0");
+                    const urlParte = `roms/sonic.part${numero}`;
+                    
+                    detalle.textContent = `Descargando parte ${i} de ${totalPartes}...`;
+                    const respuesta = await fetch(urlParte);
+                    
+                    if (!respuesta.ok) {
+                        throw new Error(`No se pudo cargar ${urlParte} (Error ${respuesta.status})`);
+                    }
+                    
+                    const buffer = await respuesta.arrayBuffer();
+                    fragmentos.push(buffer);
+                    
+                    const porcentaje = Math.round((i / totalPartes) * 100);
+                    barra.style.width = `${porcentaje}%`;
+                }
+
+                estado.textContent = "Uniendo archivo en memoria...";
+                detalle.textContent = "Iniciando emulador...";
+
+                const blobUnido = new Blob(fragmentos, { type: "application/octet-stream" });
+                const romBlobUrl = URL.createObjectURL(blobUnido);
+
+                document.getElementById("pantalla-carga").style.display = "none";
+                document.getElementById("contenedor-juego").style.display = "block";
+
+                iniciarEmulador(romBlobUrl);
+
+            } catch (error) {
+                estado.textContent = "Error al cargar el juego";
+                estado.style.color = "#ff4444";
+                detalle.textContent = error.message;
+                console.error(error);
+            }
+        }
+
+        function iniciarEmulador(romUrl) {
+            window.EJS_player = "#game";
+            window.EJS_core = "segaCD";
+            window.EJS_defaultCore = "picodrive";
+            window.EJS_gameName = "Sonic CD";
+            window.EJS_gameUrl = romUrl;
+            window.EJS_biosUrl = "bios/bios_CD_U.bin";
+            window.EJS_pathtodata = "https://cdn.emulatorjs.org/stable/data/";
+            window.EJS_language = "es-ES";
+            window.EJS_startOnLoaded = true;
+
+            const script = document.createElement("script");
+            script.src = "https://cdn.emulatorjs.org/stable/data/loader.js";
+            document.body.appendChild(script);
+        }
+
+        cargarYUnirRom();
     </script>
-    <script src="https://cdn.emulatorjs.org/stable/data/loader.js"></script>
 
 </body>
 </html>
