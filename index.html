@@ -3,13 +3,13 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sonic CD Web</title>
+    <title>Sonic CD Web Online (EmulatorJS)</title>
     <style>
         body {
             margin: 0;
             background-color: #111;
             color: #fff;
-            font-family: Arial, sans-serif;
+            font-family: system-ui, -apple-system, sans-serif;
             display: flex;
             flex-direction: column;
             justify-content: center;
@@ -17,12 +17,19 @@
             height: 100vh;
             overflow: hidden;
         }
+        #contenedor-juego {
+            width: 800px;
+            height: 600px;
+            max-width: 100vw;
+            max-height: 100vh;
+            display: none;
+        }
         #pantalla-carga {
             text-align: center;
             width: 80%;
             max-width: 400px;
         }
-        #barra-fondo {
+        .barra-fondo {
             width: 100%;
             height: 20px;
             background-color: #333;
@@ -33,25 +40,19 @@
         #barra-progreso {
             width: 0%;
             height: 100%;
-            background-color: #0066ff;
+            background-color: #0078ff;
             transition: width 0.2s;
-        }
-        #contenedor-juego {
-            display: none;
-            width: 800px;
-            height: 600px;
-            max-width: 100vw;
-            max-height: 100vh;
         }
     </style>
 </head>
 <body>
 
     <div id="pantalla-carga">
-        <h2 id="texto-estado">Cargando Sonic CD (0/17)...</h2>
-        <div id="barra-fondo">
+        <h2 id="texto-estado">Preparando Sonic CD...</h2>
+        <div class="barra-fondo">
             <div id="barra-progreso"></div>
         </div>
+        <p id="texto-detalle">0 / 17 partes descargadas</p>
     </div>
 
     <div id="contenedor-juego">
@@ -61,93 +62,110 @@
     <script>
         const TOTAL_PARTES = 17;
         const RUTA_VIRTUAL = "roms/SonicCD.chd";
+        let romBuffer = null;
 
         async function descargarYUnir() {
-            const textoEstado = document.getElementById("texto-estado");
-            const barraProgreso = document.getElementById("barra-progreso");
-            const fragmentos = [];
+            const barra = document.getElementById("barra-progreso");
+            const estado = document.getElementById("texto-estado");
+            const detalle = document.getElementById("texto-detalle");
+            const trozos = [];
+            let tamanoTotal = 0;
 
             try {
                 for (let i = 1; i <= TOTAL_PARTES; i++) {
-                    const num = String(i).padStart(3, "0");
+                    const num = String(i).padStart(3, '0');
                     const url = `roms/sonic.part${num}`;
                     const respuesta = await fetch(url);
                     if (!respuesta.ok) {
-                        throw new Error(`Error al descargar ${url}`);
+                        throw new Error(`Error al descargar ${url} (HTTP ${respuesta.status})`);
                     }
                     const buffer = await respuesta.arrayBuffer();
-                    fragmentos.push(buffer);
+                    trozos.push(new Uint8Array(buffer));
+                    tamanoTotal += buffer.byteLength;
 
                     const porcentaje = Math.round((i / TOTAL_PARTES) * 100);
-                    textoEstado.textContent = `Cargando Sonic CD (${i}/${TOTAL_PARTES}) - ${porcentaje}%`;
-                    barraProgreso.style.width = `${porcentaje}%`;
+                    barra.style.width = porcentaje + "%";
+                    detalle.textContent = `${i} / ${TOTAL_PARTES} partes descargadas (${porcentaje}%)`;
                 }
 
-                textoEstado.textContent = "Preparando emulador...";
-                const blobUnido = new Blob(fragmentos, { type: "application/octet-stream" });
-                const arrayBufferFinal = await blobUnido.arrayBuffer();
+                estado.textContent = "Uniendo archivos en memoria...";
+                const combinado = new Uint8Array(tamanoTotal);
+                let offset = 0;
+                for (const trozo of trozos) {
+                    combinado.set(trozo, offset);
+                    offset += trozo.byteLength;
+                }
+                romBuffer = combinado.buffer;
 
-                // Interceptar fetch para entregar el archivo virtual terminado en .chd
-                const fetchOriginal = window.fetch;
-                window.fetch = async function(recurso, opciones) {
-                    const urlStr = typeof recurso === "string" ? recurso : (recurso && recurso.url ? recurso.url : "");
-                    if (urlStr.includes(RUTA_VIRTUAL)) {
-                        return new Response(arrayBufferFinal, {
-                            status: 200,
-                            statusText: "OK",
-                            headers: {
-                                "Content-Type": "application/octet-stream",
-                                "Content-Length": arrayBufferFinal.byteLength.toString()
-                            }
-                        });
-                    }
-                    return fetchOriginal.apply(this, arguments);
-                };
-
-                // Interceptar XMLHttpRequest por si el nucleo lo usa en lugar de fetch
-                const xhrOpenOriginal = XMLHttpRequest.prototype.open;
-                const xhrSendOriginal = XMLHttpRequest.prototype.send;
-
-                XMLHttpRequest.prototype.open = function(metodo, url) {
-                    this._esRomVirtual = typeof url === "string" && url.includes(RUTA_VIRTUAL);
-                    return xhrOpenOriginal.apply(this, arguments);
-                };
-
-                XMLHttpRequest.prototype.send = function(cuerpo) {
-                    if (this._esRomVirtual) {
-                        Object.defineProperty(this, "status", { writable: true, value: 200 });
-                        Object.defineProperty(this, "readyState", { writable: true, value: 4 });
-                        Object.defineProperty(this, "response", { writable: true, value: arrayBufferFinal });
-                        Object.defineProperty(this, "responseText", { writable: true, value: "" });
-                        setTimeout(() => {
-                            if (typeof this.onreadystatechange === "function") this.onreadystatechange();
-                            if (typeof this.onload === "function") this.onload();
-                        }, 10);
-                        return;
-                    }
-                    return xhrSendOriginal.apply(this, arguments);
-                };
-
-                document.getElementById("pantalla-carga").style.display = "none";
-                document.getElementById("contenedor-juego").style.display = "block";
-
-                window.EJS_player = "#game";
-                window.EJS_core = "segaCD";
-                window.EJS_gameName = "Sonic CD (USA).chd";
-                window.EJS_gameUrl = RUTA_VIRTUAL;
-                window.EJS_biosUrl = "bios/bios_CD_U.bin";
-                window.EJS_pathtodata = "https://cdn.emulatorjs.org/stable/data/";
-                window.EJS_language = "es-ES";
-                window.EJS_startOnLoaded = true;
-
-                const scriptLoader = document.createElement("script");
-                scriptLoader.src = "https://cdn.emulatorjs.org/stable/data/loader.js";
-                document.body.appendChild(scriptLoader);
+                instalarInterceptores();
+                iniciarEmulador();
 
             } catch (error) {
-                textoEstado.textContent = "Error al cargar las partes del juego: " + error.message;
-                textoEstado.style.color = "#ff4444";
+                estado.textContent = "Error al cargar los archivos";
+                estado.style.color = "#ff4444";
+                detalle.textContent = error.message;
+                console.error(error);
             }
+        }
+
+        function instalarInterceptores() {
+            const fetchOriginal = window.fetch;
+            window.fetch = async function(input, init) {
+                const urlStr = (typeof input === "string") ? input : (input && input.url ? input.url : "");
+                if (urlStr.includes(RUTA_VIRTUAL)) {
+                    return new Response(romBuffer, {
+                        status: 200,
+                        statusText: "OK",
+                        headers: {
+                            "Content-Type": "application/octet-stream",
+                            "Content-Length": romBuffer.byteLength.toString()
+                        }
+                    });
+                }
+                return fetchOriginal.apply(this, arguments);
+            };
+
+            const XHROpenOriginal = XMLHttpRequest.prototype.open;
+            const XHRSendOriginal = XMLHttpRequest.prototype.send;
+
+            XMLHttpRequest.prototype.open = function(method, url) {
+                this._esRomVirtual = (typeof url === "string" && url.includes(RUTA_VIRTUAL));
+                return XHROpenOriginal.apply(this, arguments);
+            };
+
+            XMLHttpRequest.prototype.send = function(body) {
+                if (this._esRomVirtual) {
+                    setTimeout(() => {
+                        Object.defineProperty(this, "status", { get: () => 200 });
+                        Object.defineProperty(this, "statusText", { get: () => "OK" });
+                        Object.defineProperty(this, "readyState", { get: () => 4 });
+                        Object.defineProperty(this, "response", { get: () => romBuffer });
+                        Object.defineProperty(this, "responseType", { get: () => "arraybuffer" });
+                        if (typeof this.onreadystatechange === "function") this.onreadystatechange();
+                        if (typeof this.onload === "function") this.onload();
+                    }, 10);
+                    return;
+                }
+                return XHRSendOriginal.apply(this, arguments);
+            };
+        }
+
+        function iniciarEmulador() {
+            document.getElementById("pantalla-carga").style.display = "none";
+            document.getElementById("contenedor-juego").style.display = "block";
+
+            window.EJS_player = "#game";
+            window.EJS_core = "genesis_plus_gx";
+            window.EJS_gameName = "Sonic CD (USA).chd";
+            window.EJS_gameUrl = RUTA_VIRTUAL;
+            window.EJS_biosUrl = "bios/bios_CD_U.bin";
+            window.EJS_pathtodata = "https://cdn.emulatorjs.org/stable/data/";
+            window.EJS_language = "es-ES";
+            window.EJS_startOnLoaded = true;
+
+            const script = document.createElement("script");
+            script.src = "https://cdn.emulatorjs.org/stable/data/loader.js";
+            document.body.appendChild(script);
         }
 
         descargarYUnir();
