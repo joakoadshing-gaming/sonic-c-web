@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sonic CD Web</title>
+    <style>
+        body {
+            margin: 0;
+            background-color: #111;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            overflow: hidden;
+        }
+        #contenedor-juego {
+            width: 800px;
+            height: 600px;
+            max-width: 100vw;
+            max-height: 100vh;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="contenedor-juego">
+        <div id="game"></div>
+    </div>
+
+    <script>
+        EJS_player = "#game";
+        EJS_core = "segaCD";
+        EJS_gameName = "Sonic CD";
+        EJS_gameUrl = "roms/SonicCD.chd";
+        EJS_biosUrl = "bios/bios_CD_U.bin";
+        EJS_pathtodata = "data/";
+        EJS_language = "es-ES"; // Interfaz del emulador en español
+        EJS_startOnLoaded = true; // Inicia automáticamente al terminar de cargar
+    </script>
+    <script src="data/loader.js"></script>
+
+</body>
+</html>
